@@ -3,7 +3,7 @@ const path = require("path");
 const bcrypt = require("bcryptjs");
 const { Client } = require("pg");
 
-const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "data", "catalog.json"), "utf8"));
+const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "src", "data", "catalog.json"), "utf8"));
 
 const contentBlocks = [
   ["hero", "Первый экран", "Электрические полотенцесушители для комплектации объектов", "Серийные модели BEND для застройщиков и электромонтажных организаций. Подготовим коммерческое предложение по составу поставки.", "Запросить КП", "#request", "Открыть каталог", "#catalog", 10],
