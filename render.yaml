@@ -1,0 +1,34 @@
+services:
+  # PostgreSQL — бесплатный тариф (живёт 30 дней, потом продлить/апгрейдить)
+  - type: pserv
+    name: bend59-db
+    plan: free
+    databaseName: bend
+    databaseUser: bend
+    region: frankfurt
+
+  # Сайт BEND
+  - type: web
+    name: bend59
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: node scripts/render-start.cjs
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: bend59-db
+          property: connectionString
+      - key: SITE_URL
+        sync: false   # вписать https://bend59.onrender.com после первого деплоя
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false   # логин в админку
+      - key: ADMIN_PASSWORD
+        sync: false   # пароль в админку (минимум 12 символов)
+      - key: NODE_VERSION
+        value: "22"

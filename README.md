@@ -1,36 +1,140 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BEND — Next.js, PostgreSQL и собственная админка
 
-## Getting Started
+## Что это
 
-First, run the development server:
+Это самописный B2B-сайт ООО «БЕНД» на **Next.js + PostgreSQL**. WordPress, PHP-тема и плагины не используются. Публичная часть, административная панель, каталог, заявки и медиа работают как одно приложение. Сайт подготовлен для независимого развёртывания на **NetAngels VDS с Docker**.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+> Обычный PHP-хостинг для этой версии не подходит: нужен VDS с Docker, потому что приложение использует Node.js и PostgreSQL. NetAngels публикует Docker-образы для облачных VDS и описывает запуск многоконтейнерных проектов через Docker Compose.[1] [2]
+
+## Адреса локальной разработки
+
+| Адрес | Назначение |
+|---|---|
+| `http://localhost:3001/` | Стандартная публичная страница во время разработки |
+| `http://localhost:8081/` | Текущий проверочный запуск по запросу; задаётся временно через `SITE_URL` при старте dev-сервера |
+| `http://localhost:3001/admin/login` или `http://localhost:8081/admin/login` | Вход в административную панель на соответствующем локальном порту |
+| `http://localhost:5433` | PostgreSQL для разработки; не открывайте его наружу |
+
+Учётные данные локального администратора хранятся только в приватном файле `.env`. Не пересылайте этот файл и не добавляйте его в архив для заказчика.
+
+## Что меняется без кода
+
+| Раздел `/admin` | Что редактирует |
+|---|---|
+| **Блоки страницы** | Заголовки, тексты, кнопки, ссылки, порядок и видимость секций главной |
+| **Каталог** | SKU, серию, артикул, подтверждённое описание позиции, размер, цвет, мощность, внутреннюю цену, порядок, отображение и содержимое modal-карточки «Подробнее» |
+| **Серии** | Название, описание, фото, alt-текст, заметку, порядок, режим панели (фото сверху/split/текст) и пропорции фото |
+
+| **Медиа** | Загрузка и удаление JPEG, PNG, WebP и PDF; выдаёт готовую ссылку на файл |
+| **Документы** | Название, пояснение, PDF-ссылку, порядок и видимость |
+| **Заявки** | Список заявок с сайта и данные для подготовки КП |
+| **Настройки и SEO** | Контакты, реквизиты, получатель заявок, title, description, режим логотипа, текст бренда, hero-карточку и текст подвала |
+| **Статистика и cookie** | Агрегированные просмотры, решения по cookie, популярные страницы и текст публичного уведомления |
+
+При сохранении данные обновляются в PostgreSQL и сразу становятся видны на сайте. Формы не требуют правки исходников. Описание SKU показывается под артикулом в публичном каталоге; оставляйте поле пустым, если подтверждённого текста для конкретной позиции нет. Для логотипа, серии и modal-карточки вставляйте внутреннюю ссылку вида `/uploads/...` из «Медиа» или HTTPS-ссылку. Сохранение отбрасывает небезопасные схемы ссылок; `javascript:` и `data:` не принимаются.
+
+## Защита админки и файлов
+
+Вход администратора использует `httpOnly` сессионную cookie, подпись JWT и пароль, хэшированный bcrypt. После пяти неудачных попыток для одной комбинации адреса и e-mail вход блокируется на 15 минут; счётчик краткоживущий и хранится только в памяти приложения, без записи IP в базу. В production обязательны HTTPS, уникальный `AUTH_SECRET` от 32 символов и сильный пароль первого администратора.
+
+Загрузка медиа доступна только после входа. Сервер принимает JPEG, PNG, WebP и PDF до 10 МБ, очищает имя файла и проверяет не только заявленный MIME-тип, но и сигнатуру содержимого. В Next.js и Caddy настроены CSP, `X-Content-Type-Options`, защита от встраивания в чужой iframe, политика referrer и запрет неиспользуемых browser-permissions.
+
+## Cookie, приватность и статистика
+
+Публичная страница [`/privacy`](/privacy) объясняет назначение cookie и работу обезличенной статистики. Посетитель до выбора видит две равноправные кнопки: «Разрешить статистику» и «Только необходимые». В браузере сохраняется только версия и принятое решение в cookie `bend_cookie_consent` сроком на 180 дней. После отказа никаких просмотров не учитывается.
+
+При согласии сервер записывает обезличенное решение с одноразовым случайным receipt hash и увеличивает дневной счётчик пути страницы в `analytics_daily`. IP-адрес, User-Agent, идентификаторы устройства, рекламные идентификаторы, параметры URL и данные формы не сохраняются. Внешние сервисы аналитики не подключены.
+
+В разделе **Статистика и cookie** можно изменить текст и подписи баннера, ссылку на страницу privacy, включить или отключить агрегированную статистику, посмотреть показатели за 30 дней, график и популярные страницы. Срок хранения выбирается в пределах **30–730 дней**. При каждом сохранении этих настроек приложение сразу удаляет из `consent_events` и `analytics_daily` записи старше заданного срока; это действие идемпотентно и не затрагивает контент, заявки или медиа.
+
+## Быстрый старт на компьютере разработчика
+
+Сначала создайте `.env` с локальными секретами, затем поднимите PostgreSQL, примените схему и заполните подтверждённые исходные данные BEND.
+
+```powershell
+cd "D:\coding\КЕША ПРОЕКТЫ\BEND59\bend-next"
+powershell -ExecutionPolicy Bypass -File .\scripts\create-local-env.ps1
+docker-compose -f docker-compose.dev.yml --env-file .env up -d
+pnpm db:setup
+pnpm dev --hostname 0.0.0.0 --port 3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Перед передачей или развёртыванием выполните `pnpm lint`, `pnpm build` и `docker-compose build app`. Для создания чистого пакета запускайте `powershell -ExecutionPolicy Bypass -File .\scripts\export-for-netangels.ps1`; архив сохраняется в `dist` и не содержит `.env`, `node_modules`, `.next`, screenshots и прошлые exports.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Для production-проверки перед переносом используется независимая Docker-сборка. Она запускает миграции, создаёт первого администратора и первоначальные данные только в пустой базе.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```powershell
+docker-compose build app
+```
 
-## Learn More
+## Развёртывание на NetAngels VDS
 
-To learn more about Next.js, take a look at the following resources:
+### 1. Подготовьте сервер и домен
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Создайте VDS с Docker, добавьте к домену A-запись на IP сервера и откройте входящие порты `80` и `443`. Для PostgreSQL отдельный публичный порт **не требуется и не должен открываться**.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 2. Передайте проект
 
-## Deploy on Vercel
+Скопируйте актуальный ZIP из `bend-next/dist` на сервер и распакуйте его, например в `/opt/bend-next`. Не переносите локальные файлы `.env`, `.env.docker-test`, `node_modules`, `.next` и скриншоты: экспортный скрипт уже исключает их из итогового архива.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 3. Создайте production `.env`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+На сервере выполните:
+
+```bash
+cd /opt/bend-next
+cp .env.production.example .env
+nano .env
+```
+
+Заполните реальный домен, e-mail владельца, **уникальный** пароль PostgreSQL, `AUTH_SECRET` длиной не менее 32 случайных символов и надёжный пароль первого администратора. Не используйте примерные значения из шаблона.
+
+### 4. Запустите сервисы
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f app
+```
+
+При первом запуске приложение самостоятельно создаст таблицы, импортирует 36 SKU, шесть серий, начальные документы, фото и первого администратора. Caddy автоматически получает TLS-сертификат после того, как домен уже указывает на сервер.
+
+### 5. Первичная SEO-проверка после публикации
+
+Укажите в production `.env` точный адрес `SITE_URL=https://ваш-домен.ru`: из него формируются canonical, JSON-LD, `robots.txt` и sitemap. Затем проверьте `https://ваш-домен.ru/robots.txt` и `https://ваш-домен.ru/sitemap.xml`, добавьте сайт в Google Search Console и Яндекс Вебмастер, отправьте sitemap. До этого момента нельзя оценивать индексацию, позиции, трафик или эффект SEO.
+
+### 6. Проверьте результат
+
+Откройте `https://ваш-домен/` и `https://ваш-домен/admin/login`. После первого успешного входа храните пароль в менеджере паролей. Значение `ADMIN_PASSWORD` в `.env` применяется только для создания пользователя в пустой базе и не должно быть способом регулярной смены пароля.
+
+## Бэкапы
+
+Перед обновлением сайта сохраняйте отдельно базу и медиатеку. Они лежат в разных Docker volumes, поэтому пересборка приложения не должна затрагивать ни каталог, ни заявки, ни файлы.
+
+```bash
+mkdir -p /opt/bend-backups
+stamp=$(date +%F-%H%M%S)
+docker compose exec -T db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "/opt/bend-backups/bend-db-$stamp.sql.gz"
+docker run --rm -v bend-next_bend_uploads:/source:ro -v /opt/bend-backups:/backup alpine tar czf "/backup/bend-media-$stamp.tar.gz" -C /source .
+```
+
+Проверьте восстановление на отдельной тестовой машине до крупных обновлений. Бэкап базы без архива медиа и архив медиа без базы считаются неполной копией.
+
+## Обновление приложения
+
+```bash
+cd /opt/bend-next
+docker compose up -d --build
+docker compose logs --tail=100 app
+```
+
+Миграции и первоначальное заполнение запускаются идемпотентно: существующий редактируемый контент, изображения, документы и заявки не перезаписываются.
+
+## Контентные ограничения
+
+В первоначальные данные перенесены только подтверждённые материалы. Для С-образной серии не публикуйте утверждение о сертификационном покрытии без отдельного подтверждения. Для SKU используйте диапазон мощности из паспорта `20–65 Вт`, а не фиксированные 48 Вт для всех позиций. Данные из `info.txt` не импортированы в приложение.
+
+## References
+
+[1]: https://www.netangels.ru/company/news/2016/docker/ "NetAngels — Новый образ Docker"
+[2]: https://www.netangels.pro/search/?term=docker "NetAngels.pro — материалы по Docker и Docker Compose"

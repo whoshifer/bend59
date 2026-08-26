@@ -1,0 +1,1 @@
+ALTER TABLE "series" ADD COLUMN "gallery" text DEFAULT '[]' NOT NULL;
