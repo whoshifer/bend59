@@ -1,6 +1,8 @@
-// Стартовый скрипт для Render: схема → миграции → сид → production-сервер Next.js.
-// BEND живёт в общей базе (darra-db) внутри отдельной схемы `bend`, поэтому таблицы
-// двух проектов не пересекаются. Сид идемпотентный (ON CONFLICT DO NOTHING).
+// Стартовый скрипт для Render: миграции → сид → production-сервер Next.js.
+// BEND живёт в общей darra-db (free-тариф Render даёт одну БД на аккаунт).
+// Пересечений таблиц нет: darra (Prisma) — SiteConfig/Order/MediaAsset/…,
+// bend (Drizzle) — products/series/inquiries/… Журнал drizzle — в схеме drizzle_bend.
+// Сид идемпотентный (ON CONFLICT DO NOTHING), повторные деплои контент не затирают.
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 
@@ -13,27 +15,22 @@ function run(command, args, env) {
 }
 
 async function main() {
-  const baseUrl = process.env.DATABASE_URL;
-  if (!baseUrl) throw new Error("DATABASE_URL is not configured.");
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not configured.");
 
-  // 1. Создаём схему bend, если её ещё нет.
+  // Журнал миграций drizzle изолируем в отдельной схеме, чтобы не пересечься,
+  // если darra когда-нибудь тоже переедет на drizzle.
   const { Client } = require("pg");
-  const client = new Client({ connectionString: baseUrl });
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
-  await client.query("CREATE SCHEMA IF NOT EXISTS bend");
+  await client.query("CREATE SCHEMA IF NOT EXISTS drizzle_bend");
+  await client.query("GRANT ALL ON SCHEMA drizzle_bend TO current_user");
   await client.end();
-  console.log("Schema 'bend' is ready.");
 
-  // 2. Все дальнейшие подключения работают внутри схемы bend.
-  const url = new URL(baseUrl);
-  url.searchParams.set("options", "-csearch_path=bend,public");
-  const env = { ...process.env, DATABASE_URL: url.toString() };
+  const env = { ...process.env, MIGRATIONS_SCHEMA: "drizzle_bend" };
 
-  // 3. Миграции и сид (идемпотентно).
   await run("node", [path.join(__dirname, "migrate.cjs")], env);
   await run("node", [path.join(__dirname, "seed.cjs")], env);
 
-  // 4. Production-сервер.
   const port = process.env.PORT || "3000";
   const server = spawn("npx", ["next", "start", "-p", port, "-H", "0.0.0.0"], {
     stdio: "inherit",
